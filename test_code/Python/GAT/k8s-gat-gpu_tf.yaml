@@ -1,0 +1,47 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: spcastillo-gat-gpu
+  namespace: yn-gpu-workload
+  labels:
+      k8s-user: spcastillo
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 60
+  template:
+    spec:
+      nodeSelector:
+        "nvidia.com/gpu.present": "true"
+      securityContext:
+        runAsUser: 290793
+        runAsGroup: 149100
+        fsGroup: 149100
+      containers:
+        - name: main
+          image: hpcharbor.mdanderson.edu/spcastillo/dlenv@sha256:d858d7500463d3b554dcad34cbf5b212a59258a7696cffc63654bd1b96c074e5
+          command: ["python", "/rsrch5/home/trans_mol_path/spcastillo/gbm_krishna/gat/gat.py"]  
+          args: []
+          workingDir: "/rsrch5/home/trans_mol_path/spcastillo/"
+          env:
+          - name: HOME
+            value: "/rsrch5/home/trans_mol_path/spcastillo/"
+          volumeMounts:
+            - name: shm
+              mountPath: "/dev/shm"
+            - name: home
+              mountPath: "/rsrch5/home/trans_mol_path/spcastillo/"
+          resources:
+            limits:
+              nvidia.com/gpu: "1"
+          imagePullPolicy: IfNotPresent
+      volumes:
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: '21474836480'
+        - name: home
+          persistentVolumeClaim:
+            claimName: spcastillo-gpu-home 
+      restartPolicy: Never
+
