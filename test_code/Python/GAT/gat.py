@@ -11,11 +11,11 @@ from model import GraphAttentionNetwork
 HIDDEN_UNITS = 120
 NUM_HEADS = 8
 NUM_LAYERS = 5
-OUTPUT_DIM = 4 #len(class_values)
+OUTPUT_DIM = 4 # == len(class_values)
 LEARNING_RATE = 3e-3
 
 warnings.filterwarnings("ignore")
-data_dir = '/rsrch5/home/trans_mol_path/spcastillo/gbm_krishna/gat/data/output_test'
+data_dir = '/data/spatial_to_gat'
 
 for featuresdf in os.listdir(data_dir):
     if featuresdf.startswith("features"):
@@ -36,49 +36,37 @@ for featuresdf in os.listdir(data_dir):
             )
 
 
-        ### DO NOT CHANGE
+        ### data preparation
         features = features.drop(columns=['phenotype', 'size','CD68', 'Nestin'])
         features = features.rename(columns={"phenotype2": "phenotype", 'cell.id': 'cell_id'})
-        #####
         features["phenotype"] = features["phenotype"].apply(str)
         class_values = sorted(features["phenotype"].unique())
         class_idx = {name: id for id, name in enumerate(class_values)}
         cell_idx = {name: idx for idx, name in enumerate(sorted(features["cell_id"].unique()))}
-
+       
         features["cell_id"] = features["cell_id"].apply(lambda name: cell_idx[name])
         links["source"] = links["source"].apply(lambda name: cell_idx[name])
         links["target"] = links["target"].apply(lambda name: cell_idx[name])
         features["phenotype"] = features["phenotype"].apply(lambda value: class_idx[value])
 
-        test_data = features #train_test_split(features, test_size=0.5, stratify=features[['phenotype']])
-
-        # train_indices = train_data["cell_id"].to_numpy()
+        test_data = features 
         test_indices = test_data["cell_id"].to_numpy()
+        test_labels = test_data["phenotype"].to_numpy() # GT based on co-expression phenotyping
 
-        # train_labels = train_data["phenotype"].to_numpy()
-        test_labels = test_data["phenotype"].to_numpy()
-
-        # Define graph, namely an edge tensor and a node feature tensor
-        edges = tf.convert_to_tensor(links[["target", "source"]])
+        edges = tf.convert_to_tensor(links[["target", "source"]]) #convert adjacency matrix to a tensor
         x = np.asarray(features.sort_values("cell_id").iloc[:, 1:-1]).astype('float32')
         node_states = tf.convert_to_tensor(x)
 
-
-        # Load weights
         loss_fn = keras.losses.SparseCategoricalCrossentropy(from_logits=True)
         optimizer = keras.optimizers.legacy.Adam(LEARNING_RATE)
         accuracy_fn = keras.metrics.SparseCategoricalAccuracy(name="acc")
 
-        # Build model
         gat_model = GraphAttentionNetwork(
             node_states, edges, HIDDEN_UNITS, NUM_HEADS, NUM_LAYERS, OUTPUT_DIM
         )
 
-        # Compile model
         gat_model.compile(loss=loss_fn, optimizer=optimizer, metrics=[accuracy_fn])
-
-        # Load weights
-        gat_model.load_weights('/rsrch5/home/trans_mol_path/spcastillo/gbm_krishna/gat/inference/ckpt/20240331-1824/')
+        gat_model.load_weights('/ckpt/spatial-aware/spatialware_20240331-1824/')
 
 
         test_probs = gat_model.predict(x=test_indices)
@@ -88,7 +76,6 @@ for featuresdf in os.listdir(data_dir):
             print(f"Example {i+1}: {mapping[label]}")
             for j, c in zip(probs, class_idx.keys()):
                 print(f"test: {i+1}, GT: {mapping[label]}, pred: {c: <24}, prob:{j:7.3f}")
-                #print(f"\tProbability of {c: <24} = {j*100:7.3f}%")
             print("---" * 20)
 
             d = []
@@ -106,4 +93,4 @@ for featuresdf in os.listdir(data_dir):
                     )
 
             d = pd.DataFrame(d)
-            d.to_csv('/rsrch5/home/trans_mol_path/spcastillo/gbm_krishna/gat/inference/spatialagnostic/'+ roi_id +'.csv')
+            d.to_csv('/inference/spatialaware/'+ roi_id +'.csv')
