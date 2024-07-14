@@ -1,4 +1,4 @@
-## Author: Simon Castillo
+## Author: Simon Castillo spcastillo@mdanderson.org
 ## Last modified (ddmmyyyy): 13092024
 
 if(!require("pacman")) install.packages("pacman")

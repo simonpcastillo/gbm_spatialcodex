@@ -1,4 +1,4 @@
-## Author: Simon Castillo
+## Author: Simon Castillo spcastillo@mdanderson.org
 ## Last modified (ddmmyyyy): 13092024
 
 pacman::p_load(dplyr, raster, spatstat)

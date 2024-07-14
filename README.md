@@ -6,6 +6,6 @@
 
 **Repository maintainer**:  Simon P. Castillo (spcastillo@mdanderson.org, MD Anderson)
 
-This repository contains the code used in the manuscript (main code) and a test code with a sample data set to reproduce.
+This repository contains the code used in the manuscript (main code) and a test code with a sample data set to reproduce some of the steps. Further data access can be requested tot he corresponding authors.
 
 
