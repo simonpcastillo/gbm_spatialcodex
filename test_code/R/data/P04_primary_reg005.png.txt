@@ -1,0 +1,2 @@
+Image	Object ID	Name	Class	Parent	ROI	Centroid X px	Centroid Y px	Area px^2	Perimeter px
+s338_c005_v001_r001_reg005.png	2bb184b2-34aa-4eaa-bb78-be2b454e0fe2	Cellular tumor	Cellular tumor	Image	Geometry	4290.5	2540.8	39983705.6	30940.8

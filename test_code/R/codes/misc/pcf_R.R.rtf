@@ -1,0 +1,208 @@
+{\rtf1\ansi\ansicpg1252\cocoartf2709
+\cocoatextscaling0\cocoaplatform0{\fonttbl\f0\fswiss\fcharset0 Helvetica;}
+{\colortbl;\red255\green255\blue255;}
+{\*\expandedcolortbl;;}
+\margl1440\margr1440\vieww11520\viewh8400\viewkind0
+\pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
+
+\f0\fs24 \cf0 f0 = Sys.glob('output/*.csv')\
+\
+data_pcf = data.frame()\
+\
+for(i in 1:length(f0))\{\
+  print(i)\
+  df0 = read.csv(f0[i])\
+  data_pcf = rbind(data_pcf, df0)\
+\}\
+\
+\
+\
+\
+require(stringr); require(dplyr)\
+data_pcf %>%\
+  mutate(tempid = paste(sample, region, path_region, pair, sep='---')) %>%\
+  group_by(tempid) %>%\
+  summarise(mGmean= mean(Gmean)) %>%\
+  ungroup() -> data_pcf2\
+\
+\
+data_pcf2$sample= lapply(str_split(data_pcf2$tempid,pattern= '---'), function(x) x[1])\
+data_pcf2$region= lapply(str_split(data_pcf2$tempid,pattern= '---'), function(x) x[2])\
+data_pcf2$path_region= lapply(str_split(data_pcf2$tempid,pattern= '---'), function(x) x[3])\
+data_pcf2$pair= lapply(str_split(data_pcf2$tempid,pattern= '---'), function(x) x[4])\
+data_pcf2$cell1= lapply(str_split(data_pcf2$pair,pattern= '-vs-'), function(x) x[1])\
+data_pcf2$cell2= lapply(str_split(data_pcf2$pair,pattern= '-vs-'), function(x) x[2])\
+\
+data_pcf2 %>%\
+  select(sample, region, path_region, pair, cell1, cell2, mGmean) -> data_pcf2\
+\
+# sam = 'IWR05'\
+pathreg= 'CT'\
+metrics_net = data.frame()\
+metrics_node = data.frame()\
+\
+samples = unlist(unique(data_pcf2$sample))\
+samples <- c('IWP05', 'IWR05', 'IWP06', 'IWR06', 'IWP07', 'IWR07')\
+for(sam in samples)\{\
+for(reg in unique(data_pcf2[data_pcf2$sample==sam,]$region))\{\
+  print(reg)\
+  \
+reg_df = \
+  data_pcf2 %>%\
+  filter(sample== sam, region== reg)\
+\
+reg_mat = matrix(data=NA, nrow = length(unlist(unique(data_pcf2$cell2))), ncol = length(unlist(unique(data_pcf2$cell2))))\
+colnames(reg_mat) <- rownames(reg_mat)<- unlist(unique(data_pcf2$cell2))\
+\
+for(i in 1:nrow(reg_df))\{\
+  target_cell1 = reg_df[i,]$cell1[[1]]\
+  target_cell2 = reg_df[i,]$cell2[[1]]\
+  mGmedval = reg_df[i, ]$mGmean\
+  reg_mat[target_cell1,target_cell2]<-mGmedval\
+  reg_mat[target_cell2,target_cell1]<-mGmedval\
+\}\
+\
+reg_mat[reg_mat<1]<- 0\
+library(igraph)\
+net <- graph_from_adjacency_matrix(reg_mat, weighted = T, diag = F,mode = 'upper' )\
+E(net)$width = abs(E(net)$weight-1)\
+E(net)$arrow.size = 0\
+E(net)$color <- ifelse(E(net)$weight>1, 'purple', 'gray50')\
+# graph_attr(net, "layout") <- layout.fruchterman.reingold\
+# graph_attr(net, "layout") <-ll\
+\
+require(svglite)\
+svglite(paste0('plots/networks/',paste(sam, reg, pathreg, sep = '-'),'.svg'),width = 6, height = 6)\
+print(plot(net, edge.curved=0.2, vertex.size=1))\
+dev.off()\
+\
+require(igraph); require(netseg)\
+clos = closeness(net, normalized = TRUE, mode = 'all')\
+str = strength(net)\
+bet = betweenness(net, directed = FALSE, normalized = TRUE)\
+deg = degree(net)\
+transiti = transitivity(net, type = 'weighted', isolates = 'zero')\
+df00 = data.frame(names(V(net)), deg, clos, str, bet, transiti)\
+df00$sample = sam\
+df00$reg = reg\
+df00$path_reg = pathreg\
+\
+nods = c('DC', 'Macrophage', 'Microglia', 'Olig2prolif', 'TCD4', 'TCD4TCD8', 'TCD8', 'CD4Macrophage', 'Olig2nonprolif', 'Monocyte')\
+labs_nodes = as.factor(c(rep('Myeloid', 3), 'Tumor', rep('Lymphoid',3), 'Myeloid', 'Tumor', 'Myeloid'))\
+dfxx = data.frame(nods, labs_nodes)\
+dfxx = dfxx[match(names(V(net)), dfxx$nods),]\
+\
+assor = assortativity_nominal(net, types = dfxx$labs_nodes, directed = F)\
+wtc <- cluster_fast_greedy(net)\
+mod = modularity(wtc)\
+trans = mean(transitivity(net, type = 'barrat'), na.rm=T)\
+df00_net = data.frame(sam, reg, pathreg, assor, mod, trans)\
+\
+metrics_node = rbind(metrics_node, df00)\
+metrics_net = rbind(metrics_net, df00_net)\
+\
+\}\
+\}\
+\
+ll= layout.fruchterman.reingold(net) \
+\
+require(stringr); require(ggpubr)\
+metrics_net$time = str_extract(metrics_net$sam, '[R,P]')\
+metrics_net$pat = str_extract(metrics_net$sam, '\\\\d\{2\}')\
+require(lme4)\
+lmer(mod ~ time + (1|sam), data = metrics_net, REML = T) %>%\
+  anova()\
+\
+\
+require(ggbeeswarm)\
+metrics_net%>%\
+ggplot(aes(time, assor, fill=time))+\
+  geom_boxplot()+\
+  geom_quasirandom()+\
+  theme_minimal()+\
+  guides(fill='none')\
+\
+\
+  data_pcf2 -> data_pcf2b\
+    # filter(!sample %in% c('IWP06'))\
+  data_pcf2b %>%\
+    mutate(time = str_extract(sample, '[P,R]'),\
+           mGmean = case_when(mGmean <1 ~ 0,\
+                              mGmean>1 ~ mGmean)) %>%\
+    mutate(timepair= paste0(time, pair))%>%\
+    group_by(timepair) %>%\
+    summarise(time= unique(time),pair = unique(pair),Gmean=mean(mGmean, na.rm=TRUE))  -> data_pcf3\
+  \
+  data_pcf2b %>%\
+    mutate(time = str_extract(sample, '[R,P]'), tempid = paste0(sample, region))%>%\
+    group_by(unlist(time)) %>%\
+    summarise(length(unique(tempid))) ->nrois\
+  \
+  names(nrois)<- c('time', 'rois')\
+  \
+  # summarise(Gmean=sum(mGmean>1)/length(mGmean)) -> data_pcf3\
+  \
+    # summarise(Gmean=sum(mGmean>1)/length(mGmean)) -> data_pcf3\
+  \
+  data_pcf3$cell1= lapply(str_split(data_pcf3$pair,pattern= '-vs-'), function(x) x[1])\
+  data_pcf3$cell2= lapply(str_split(data_pcf3$pair,pattern= '-vs-'), function(x) x[2])\
+  \
+  data_pcf3P = data_pcf3[data_pcf3$time=='P',]\
+  data_pcf3R = data_pcf3[data_pcf3$time=='R',]\
+  \
+  \
+  reg_matP = matrix(data=NA, nrow = length(unlist(unique(data_pcf3P$cell2))), \
+                   ncol = length(unlist(unique(data_pcf3P$cell2))))\
+  reg_matR = matrix(data=NA, nrow = length(unlist(unique(data_pcf3R$cell2))), \
+                    ncol = length(unlist(unique(data_pcf3R$cell2))))\
+  colnames(reg_matP) <- rownames(reg_matP)<- unlist(unique(data_pcf3P$cell2))\
+  colnames(reg_matR) <- rownames(reg_matR)<- unlist(unique(data_pcf3R$cell2))\
+  \
+  \
+  for(i in 1:nrow(data_pcf3P))\{\
+    target_cell1 = data_pcf3P[i,]$cell1[[1]]\
+    target_cell2 = data_pcf3P[i,]$cell2[[1]]\
+    mGmedval = data_pcf3P[i, ]$Gmean\
+    reg_matP[target_cell1,target_cell2]<-mGmedval\
+    reg_matP[target_cell2,target_cell1]<-mGmedval\
+  \}\
+  \
+  \
+  for(i in 1:nrow(data_pcf3R))\{\
+    target_cell1 = data_pcf3R[i,]$cell1[[1]]\
+    target_cell2 = data_pcf3R[i,]$cell2[[1]]\
+    mGmedval = data_pcf3R[i, ]$Gmean\
+    reg_matR[target_cell1,target_cell2]<-mGmedval\
+    reg_matR[target_cell2,target_cell1]<-mGmedval\
+  \}\
+  \
+  reg_matP = reg_matP/nrois[nrois$time=='P',]$rois\
+  reg_matR = reg_matR/nrois[nrois$time=='R',]$rois\
+   # reg_matP[reg_matP==0]<-reg_matR[reg_matR==0]<- NA\
+  \
+  \
+  \
+  library(igraph)\
+  netP <- graph_from_adjacency_matrix(reg_matP, weighted = T, diag = F, mode = 'upper')\
+  netR <- graph_from_adjacency_matrix(reg_matR, weighted = T, diag = F, mode = 'upper')\
+  # \
+  # E(netP)$width = abs(E(netP)$weight-1)\
+  # E(netP)$arrow.size = 0\
+  # E(netP)$color <- ifelse(E(netP)$weight>1, 'purple', 'gray50')\
+  # E(netR)$width = abs(E(netR)$weight-1)\
+  # E(netR)$arrow.size = 0\
+  # E(netR)$color <- ifelse(E(netR)$weight>1, 'purple', 'gray50')\
+  \
+  # graph_attr(net, "layout") <- layout.fruchterman.reingold\
+  # graph_attr(net, "layout") <-ll\
+  \
+  # require(svglite)\
+  # svglite(paste0('plots/networks/',paste(sam, reg, pathreg, sep = '-'),'.svg'),width = 6, height = 6)\
+  # print(plot(netR, edge.curved=0.2, vertex.size=1))\
+  # dev.off()\
+\
+  \
+  wtcP <- cluster_fast_greedy(netP); plot(wtcP, netP)    \
+  wtcR <- cluster_walktrap(netR);plot(wtcR, netR)   \
+\
+}
